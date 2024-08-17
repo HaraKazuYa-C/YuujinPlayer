@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>莜仁播放器 | Yuujin Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue-i18n@8.24.4/dist/vue-i18n.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/midi.js/2.0.0/midi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="flowing-album.css">
+    <link rel="stylesheet" href="main.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'apple-bg': {
+                            light: '#f5f5f7',
+                            dark: '#1c1c1e'
+                        },
+                        'apple-text': {
+                            light: '#1d1d1f',
+                            dark: '#f5f5f7'
+                        },
+                        'apple-secondary': {
+                            light: '#86868b',
+                            dark: '#a1a1a6'
+                        },
+                        'apple-highlight': {
+                            light: '#0071e3',
+                            dark: '#0a84ff'
+                        },
+                        'apple-card-bg': {
+                            light: 'rgba(255, 255, 255, 0.7)',
+                            dark: 'rgba(44, 44, 46, 0.7)'
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'SF Pro Display Semibold', 'PingFang SC', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif' , 'SF Compact' , 'PingFang SC'],
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-apple-bg-light dark:bg-apple-bg-dark text-apple-text-light dark:text-apple-text-dark">
+    <div class="flowing-album-container">
+        <div id="flowingAlbum1" class="flowing-album"></div>
+        <div id="flowingAlbum2" class="flowing-album"></div>
+    </div>
+    <div id="backgroundOverlay" class="fixed top-0 left-0 w-full h-full -z-10"></div>
+    <div id="app" class="h-screen flex">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-apple-card-bg-light dark:bg-apple-card-bg-dark h-full fixed left-0 top-0 overflow-y-auto custom-scrollbar transition-all duration-300 ease-in-out glassmorphism"
+               :class="{ '-translate-x-full': !sidebarOpen }">
+            <div class="p-6">
+                <h1 class="text-2xl font-semibold mb-6">{{ $t('musicPlayer') }}</h1>
+                <nav class="mb-8">
+                    <ul class="space-y-2">
+                        <li v-for="(item, index) in ['library', 'nowPlaying', 'lyrics', 'settings']" :key="index">
+                            <a href="#" @click="currentView = item" 
+                               class="block py-2 px-4 rounded-lg transition-colors"
+                               :class="{'bg-apple-highlight-light dark:bg-apple-highlight-dark text-white': currentView === item}">
+                                {{ $t(item) }}
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold mb-2">{{ $t('playlist') }}</h2>
+                    <transition-group name="list" tag="ul" class="space-y-2">
+                        <li v-for="(track, index) in playlist" :key="track.id" 
+                            @click="playTrack(index)"
+                            class="p-2 rounded-lg cursor-pointer transition-all duration-300 ease-in-out"
+                            :class="{ 'bg-apple-highlight-light dark:bg-apple-highlight-dark text-white': currentTrackIndex === index }">
+                            {{ track.title }}
+                        </li>
+                    </transition-group>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="flex-1 p-8 ml-64 transition-all duration-300 ease-in-out"
+              :class="{ 'ml-0': !sidebarOpen }">
+            <button @click="toggleSidebar" class="mb-4 p-2 bg-apple-highlight-light dark:bg-apple-highlight-dark text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                <i data-feather="menu" class="h-6 w-6"></i>
+            </button>
+
+            <!-- Library View -->
+            <div v-if="currentView === 'library'" class="mb-8">
+                <h2 class="text-3xl font-bold mb-6">{{ $t('library') }}</h2>
+                <div class="flex space-x-4 mb-6">
+                    <label class="bg-apple-highlight-light dark:bg-apple-highlight-dark text-white px-4 py-2 rounded-full cursor-pointer hover:bg-opacity-90 transition-colors">
+                        <input type="file" @change="handleFileSelect" accept="audio/*,.mid,.midi" class="hidden">
+                        {{ $t('addTrack') }}
+                    </label>
+                    <label class="bg-apple-highlight-light dark:bg-apple-highlight-dark text-white px-4 py-2 rounded-full cursor-pointer hover:bg-opacity-90 transition-colors">
+                        <input type="file" @change="handleFolderSelect" webkitdirectory directory multiple class="hidden">
+                        {{ $t('addFolder') }}
+                    </label>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    <div v-for="(track, index) in playlist" :key="track.id" 
+                         class="bg-apple-card-bg-light dark:bg-apple-card-bg-dark rounded-lg overflow-hidden cursor-pointer transition-all duration-300 ease-in-out hover:shadow-lg transform hover:scale-105 glassmorphism"
+                         @click="playTrack(index)">
+                        <img :src="track.coverArt" :alt="track.title" class="w-full h-48 object-cover">
+                        <div class="p-4">
+                            <h3 class="font-semibold truncate">{{ track.title }}</h3>
+                            <p class="text-sm text-apple-secondary-light dark:text-apple-secondary-dark">{{ track.artist }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Now Playing View -->
+            <div v-if="currentView === 'nowPlaying'" class="flex flex-col items-center">
+                <img :src="currentTrack.coverArt" :alt="currentTrack.title" 
+                     class="w-64 h-64 rounded-2xl shadow-lg mb-8 object-cover transition-all duration-300 ease-in-out transform hover:scale-105">
+                <div class="bg-apple-card-bg-light dark:bg-apple-card-bg-dark p-8 rounded-lg glassmorphism">
+                    <h2 class="text-3xl font-bold mb-2">{{ currentTrack.title }}</h2>
+                    <p class="text-xl text-apple-secondary-light dark:text-apple-secondary-dark mb-8">{{ currentTrack.artist }}</p>
+                    <div class="flex items-center space-x-8 mb-8">
+                        <button @click="playPrevious" class="text-apple-text-light dark:text-apple-text-dark hover:text-apple-highlight-light dark:hover:text-apple-highlight-dark transition-colors">
+                            <i data-feather="skip-back" class="h-8 w-8"></i>
+                        </button>
+                        <button @click="togglePlay" class="w-16 h-16 rounded-full bg-apple-highlight-light dark:bg-apple-highlight-dark text-white flex items-center justify-center hover:bg-opacity-90 transition-colors">
+                            <i :data-feather="isPlaying ? 'pause' : 'play'" class="h-8 w-8"></i>
+                        </button>
+                        <button @click="playNext" class="text-apple-text-light dark:text-apple-text-dark hover:text-apple-highlight-light dark:hover:text-apple-highlight-dark transition-colors">
+                            <i data-feather="skip-forward" class="h-8 w-8"></i>
+                        </button>
+                    </div>
+                    <div class="w-full max-w-md">
+                        <div class="flex items-center mb-2">
+                            <span class="text-sm text-apple-secondary-light dark:text-apple-secondary-dark w-10">{{ formatTime(currentTime) }}</span>
+                            <div class="flex-1 mx-2 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                                <div class="bg-apple-highlight-light dark:bg-apple-highlight-dark h-1 rounded-full transition-all duration-300 ease-in-out" 
+                                     :style="{ width: `${progress}%` }"></div>
+                            </div>
+                            <span class="text-sm text-apple-secondary-light dark:text-apple-secondary-dark w-10 text-right">{{ formatTime(duration) }}</span>
+                        </div>
+                    </div>
+                    <div id="waveform" class="w-full max-w-md mt-8"></div>
+                </div>
+            </div>
+
+            <!-- Lyrics View -->
+            <div v-if="currentView === 'lyrics'" class="h-full flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold">{{ $t('lyrics') }}</h2>
+                    <div class="flex space-x-2">
+                        <button @click="importLyrics" class="px-3 py-1 bg-apple-highlight-light dark:bg-apple-highlight-dark text-white rounded-full text-sm">
+                            {{ $t('importLyrics') }}
+                        </button>
+                        <button @click="importTranslation" class="px-3 py-1 bg-apple-highlight-light dark:bg-apple-highlight-dark text-white rounded-full text-sm">
+                            {{ $t('importTranslation') }}
+                        </button>
+                    </div>
+                </div>
+                <div ref="lyricsContainer" class="flex-grow overflow-hidden relative lyrics-container bg-apple-card-bg-light dark:bg-apple-card-bg-dark rounded-lg glassmorphism">
+                    <div class="lyrics-content absolute w-full transition-transform duration-500 ease-out p-4"
+                         :style="{ transform: `translateY(${lyricsTranslateY}px)` }">
+                        <div 
+                            v-for="(line, index) in displayedLyrics" 
+                            :key="index"
+                            :ref="'lyricLine_' + index"
+                            class="lyric-line mb-6 transition-all duration-300 ease-out"
+                            :class="{
+                                'text-3xl font-bold': index === activeLyricIndex,
+                                'text-xl text-apple-secondary-light dark:text-apple-secondary-dark': index !== activeLyricIndex,
+                                'text-right': line.isRightAligned,
+                                'text-left': !line.isRightAligned
+                            }"
+                        >
+                            <p>
+                                <span v-for="(part, partIndex) in line.parts" :key="partIndex"
+                                      :class="{'harmony': part.isHarmony}">
+                                    {{ part.text }}
+                                </span>
+                            </p>
+                            <p v-if="line.translation" 
+                               class="mt-1 text-lg text-apple-secondary-light dark:text-apple-secondary-dark"
+                               :class="{ 'font-semibold': index === activeLyricIndex }">
+                                {{ line.translation }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <input type="file" ref="lyricsInput" @change="handleLyricsImport" accept=".lrc,.txt" class="hidden">
+                <input type="file" ref="translationInput" @change="handleTranslationImport" accept=".lrc,.txt" class="hidden">
+            </div>
+
+            <!-- Settings View -->
+            <div v-if="currentView === 'settings'" class="mb-8">
+                <h2 class="text-3xl font-bold mb-6">{{ $t('settings') }}</h2>
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">{{ $t('language') }}</h3>
+                        <select v-model="$i18n.locale" class="w-full p-2 rounded-lg bg-gray-100 dark:bg-gray-800 border-none">
+                            <option value="en">English</option>
+                            <option value="zh">中文</option>
+                            <option value="ja">日本語</option>
+                        </select>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">{{ $t('theme') }}</h3>
+                        <button @click="toggleDarkMode" class="w-full p-2 bg-apple-highlight-light dark:bg-apple-highlight-dark text-white rounded-lg">
+                            {{ isDarkMode ? $t('lightMode') : $t('darkMode') }}
+                        </button>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">{{ $t('equalizer') }}</h3>
+                        <div id="equalizer" class="flex space-x-4">
+                            <div v-for="(band, index) in equalizerBands" :key="index" class="flex-1">
+                                <div :id="'eq-slider-' + index" class="h-40"></div>
+                                <p class="text-center mt-2">{{ band.frequency }}Hz</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-2">{{ $t('performanceMode') }}</h3>
+                        <button @click="togglePerformanceMode" class="w-full p-2 bg-apple-highlight-light dark:bg-apple-highlight-dark text-white rounded-lg">
+                            {{ !performanceMode ? $t('enablePerformanceMode') : 
+                               (performanceMode && !extremePerformanceMode) ? $t('enableExtremePerformanceMode') : 
+                               $t('disablePerformanceMode') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer / Player Controls -->
+        <footer class="fixed bottom-0 left-0 right-0 bg-apple-card-bg-light dark:bg-apple-card-bg-dark shadow-lg transition-all duration-300 ease-in-out glassmorphism"
+                :class="{ 'ml-64': sidebarOpen }">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex items-center">
+                    <img :src="currentTrack.coverArt" :alt="currentTrack.title" class="w-12 h-12 rounded-lg mr-4">
+                    <div class="flex-1">
+                        <h3 class="font-semibold">{{ currentTrack.title }}</h3>
+                        <p class="text-sm text-apple-secondary-light dark:text-apple-secondary-dark">{{ currentTrack.artist }}</p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="playPrevious" class="text-apple-text-light dark:text-apple-text-dark hover:text-apple-highlight-light dark:hover:text-apple-highlight-dark transition-colors">
+                            <i data-feather="skip-back" class="h-6 w-6"></i>
+                        </button>
+                        <button @click="togglePlay" class="w-8 h-8 rounded-full bg-apple-highlight-light dark:bg-apple-highlight-dark text-white flex items-center justify-center hover:bg-opacity-90 transition-colors">
+                            <i :data-feather="isPlaying ? 'pause' : 'play'" class="h-4 w-4"></i>
+                        </button>
+                        <button @click="playNext" class="text-apple-text-light dark:text-apple-text-dark hover:text-apple-highlight-light dark:hover:text-apple-highlight-dark transition-colors">
+                            <i data-feather="skip-forward" class="h-6 w-6"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
